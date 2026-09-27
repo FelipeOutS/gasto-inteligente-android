@@ -1,0 +1,22 @@
+<resources>
+
+    <style name="Theme.Gastointeligente" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+
+        <item name="android:windowBackground">#0B0F14</item>
+        <item name="android:statusBarColor">#0B0F14</item>
+        <item name="android:navigationBarColor">#0B0F14</item>
+
+        <item name="android:windowLightStatusBar">false</item>
+
+        <item name="android:fontFamily">sans</item>
+    </style>
+
+    <style name="Theme.Gastointeligente.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#0B0F14</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.Gastointeligente</item>
+    </style>
+
+</resources>

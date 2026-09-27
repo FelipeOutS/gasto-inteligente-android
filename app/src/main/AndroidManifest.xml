@@ -1,0 +1,81 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Permissão para o WebView acessar a internet -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Permissão para usar biometria no Android -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!-- Permissão para verificar conexão -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Solicitada apenas quando o site busca mercados próximos. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+
+    <!-- Permissão para câmera: leitura de código de barras, QR Code e fotos -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Biometria opcional, para não bloquear aparelhos sem biometria -->
+    <uses-feature
+        android:name="android.hardware.biometrics"
+        android:required="false" />
+
+    <uses-feature
+        android:name="android.hardware.fingerprint"
+        android:required="false" />
+
+    <!-- Câmera opcional, para não bloquear instalação em aparelhos sem câmera -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
+        android:label="Gasto Inteligente"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.Gastointeligente">
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+
+        </provider>
+
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="true"
+            android:theme="@style/Theme.Gastointeligente.Splash">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="gastointeligente.com.br" android:path="/auth/android/callback" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
+
+</manifest>

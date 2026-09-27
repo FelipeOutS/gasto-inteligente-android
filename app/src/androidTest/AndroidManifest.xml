@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Only installed with the test APK; exposes a single synthetic report fixture. -->
+        <provider
+            android:name="com.gastointeligente.app.ReportTestProvider"
+            android:authorities="com.gastointeligente.test.reports"
+            android:exported="true" />
+    </application>
+</manifest>

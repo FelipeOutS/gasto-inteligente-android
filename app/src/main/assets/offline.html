@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Gasto Inteligente — sem internet</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b0f14;color:#edf4ef;font:16px system-ui,sans-serif}main{max-width:580px;margin:auto;padding:24px 20px 48px}h1{font-size:28px}h2{font-size:21px;margin-top:30px}p{line-height:1.5;color:#b9c9c0}a{color:#69dfad}label{display:block;margin-top:18px}input,select,button{font:inherit;width:100%;padding:14px;margin-top:8px;border:1px solid #43554d;border-radius:12px;background:#17221d;color:#fff}button{background:#168558;border:0;font-weight:700;cursor:pointer}button:disabled{opacity:.5}li{list-style:none;border-bottom:1px solid #304238;padding:16px 0}ul{padding:0}li p{margin:6px 0 0;font-size:14px}[hidden]{display:none!important}#message{background:#15271e;padding:14px;border-radius:12px}small{display:block;color:#b9c9c0;margin-top:10px}
+</style></head><body><main>
+<a href="https://gastointeligente.com.br/app">← Voltar ao modo online</a>
+<h1>Gastos sem internet</h1><p id="account">Desbloqueie sua conta para registrar gastos neste aparelho.</p>
+<p id="message" role="status">É necessário ter entrado antes com internet e ativado uma biometria forte no celular.</p>
+<button id="unlock">Desbloquear com biometria</button>
+<section id="content" hidden><form id="expense">
+<label for="description">Descrição</label><input id="description" maxlength="200" required placeholder="Ex.: Almoço">
+<label for="amount">Valor em R$</label><input id="amount" inputmode="decimal" maxlength="15" required placeholder="12,50">
+<label for="date">Data</label><input id="date" type="date" required>
+<label for="category">Categoria</label><select id="category"></select>
+<label for="payment">Pagamento</label><select id="payment"><option value="pix">Pix</option><option value="dinheiro">Dinheiro</option><option value="debito">Débito</option><option value="boleto">Boleto</option><option value="transferencia">Transferência</option><option value="outro">Outro</option></select>
+<label for="note">Observação (opcional)</label><input id="note" maxlength="1000">
+<button id="save" type="submit">Salvar no aparelho</button><small>Nesta versão: gastos simples, sem parcelas ou anexos. O envio depende de conexão e das regras da sua conta no servidor.</small>
+</form><h2>Pendentes</h2><p id="count"></p><ul id="pending"></ul>
+<h2>Gastos disponíveis no aparelho</h2><p id="snapshot"></p><ul id="saved"></ul></section>
+</main><script src="/__android/offline.js"></script></body></html>
