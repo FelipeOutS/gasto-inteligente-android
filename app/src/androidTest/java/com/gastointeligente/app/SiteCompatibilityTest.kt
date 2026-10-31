@@ -46,7 +46,9 @@ class SiteCompatibilityTest {
                     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?) =
                         WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream(
                             """<html><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head>
-                            <body><label for="email">E-mail</label><input id="email" type="email" autocomplete="off"></body></html>""".toByteArray()
+                            <style>body{margin:0;padding-top:var(--android-safe-top,0px);padding-bottom:var(--android-safe-bottom,0px)}</style>
+                            <body><label for="email">E-mail</label><input id="email" type="email" autocomplete="off">
+                            <script>function syncInsets(){const safe=JSON.parse(AndroidSystemUi.getInsets());for(const edge of ['top','bottom'])document.documentElement.style.setProperty('--android-safe-'+edge,safe[edge]+'px')}syncInsets();window.addEventListener('android-system-insets',syncInsets)</script></body></html>""".toByteArray()
                         ))
                     override fun onPageFinished(view: WebView?, url: String?) { loaded.countDown() }
                 }
@@ -65,14 +67,28 @@ class SiteCompatibilityTest {
                 val root = activity.window.decorView
                 val safe = requireNotNull(ViewCompat.getRootWindowInsets(root))
                     .getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-                val position = IntArray(2)
-                view.getLocationOnScreen(position)
-                assertTrue("Site overlaps the status bar", position[1] >= safe.top)
-                assertTrue("Site overlaps bottom navigation", position[1] + view.height <= root.height - safe.bottom)
+                // Edge-to-edge is intentional: the site consumes CSS-pixel native insets.
+                val density = activity.resources.displayMetrics.density
+                val result = CountDownLatch(1)
+                var actual = ""
+                view.evaluateJavascript("""JSON.stringify({top:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--android-safe-top')),bottom:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--android-safe-bottom')),contentTop:document.getElementById('email').getBoundingClientRect().top})""") {
+                    actual = it
+                    result.countDown()
+                }
+                // Assertions run after the callback below, outside the UI thread.
+                pendingInsets = Triple(result, { actual }, Pair(safe.top / density, safe.bottom / density))
                 assertTrue(view.height > root.height / 2)
             }
+            val (ready, read, expected) = requireNotNull(pendingInsets)
+            assertTrue("Insets callback timed out", ready.await(5, TimeUnit.SECONDS))
+            val json = org.json.JSONObject(org.json.JSONTokener(read()).nextValue() as String)
+            assertEquals("Native top inset", expected.first.toDouble(), json.getDouble("top"), 1.0)
+            assertEquals("Native bottom inset", expected.second.toDouble(), json.getDouble("bottom"), 1.0)
+            assertTrue("Site content overlaps status bar", json.getDouble("contentTop") >= expected.first - 1)
         }
     }
+
+    private var pendingInsets: Triple<CountDownLatch, () -> String, Pair<Float, Float>>? = null
 
     @Test fun keyboardShrinksSiteViewportAndClosingItRestoresSpace() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

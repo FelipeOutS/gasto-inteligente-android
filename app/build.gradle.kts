@@ -23,8 +23,10 @@ android {
 
     buildTypes {
         debug {
+            val offlineValidation = providers.gradleProperty("offlineValidation").orNull == "true"
+            if (offlineValidation) applicationIdSuffix = ".offlinevalidation"
             val localWeb = providers.gradleProperty("localWeb").orNull == "true"
-            val webUrl = if (localWeb) "http://127.0.0.1:5173/app" else "https://gastointeligente.com.br/app"
+            val webUrl = if (offlineValidation) "https://gastointeligente.com.br/__android/offline" else if (localWeb) "http://127.0.0.1:5173/app" else "https://gastointeligente.com.br/app"
             buildConfigField("String", "WEB_APP_URL", "\"$webUrl\"")
         }
         release {

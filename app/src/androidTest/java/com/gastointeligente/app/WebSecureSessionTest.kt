@@ -52,6 +52,10 @@ class WebSecureSessionTest {
         assertEquals("true", evaluate("https://gastointeligente.com.br/secure-fixture",
             "['saveSession','hasSession','getSavedEmail','unlockSession','clearSession'].every(k => typeof AndroidSecureSession[k] === 'function')"))
     }
+    @Test fun secureUnlockReturnsCorrelatedPromise() {
+        assertEquals("true", evaluate("https://gastointeligente.com.br/secure-fixture",
+            "typeof AndroidSecureSession.unlockSession().then === 'function'"))
+    }
     @Test fun externalPageHasNoSessionChannel() {
         assertEquals("true", evaluate("https://example.org/secure-fixture", "typeof AndroidSecureSession === 'undefined' && typeof GastoSecureSession === 'undefined'"))
     }

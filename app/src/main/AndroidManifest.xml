@@ -37,6 +37,8 @@
 
     <application
         android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:label="Gasto Inteligente"
         android:icon="@mipmap/ic_launcher"
