@@ -52,6 +52,7 @@ class OfflineConnectedAccountTest {
         return web
     }
     @Test fun connectedQueueSurvivesActivityCloseAndSendsToOriginalOwner() {
+        assertTrue(InstrumentationRegistry.getInstrumentation().targetContext.packageName.endsWith(".offlinevalidation"))
         val actor="actor-${System.currentTimeMillis()}"
         val owner="connected-$actor"
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

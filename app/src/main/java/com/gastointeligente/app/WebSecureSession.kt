@@ -38,6 +38,13 @@ internal class WebSecureSession(
     private var closed = false
 
     private var prompt: BiometricPrompt? = null
+    private var deviceCredentialPrompt = false
+
+    fun onHostStopped() {
+        // The system credential Activity legitimately stops our Activity.
+        // Only this short-lived, cryptographically bound prompt may continue.
+        if (!deviceCredentialPrompt) cancel()
+    }
     private var timeout: Runnable? = null
 
     private var pendingVaultEnrollment: SecureSessionStore? = null
@@ -126,7 +133,7 @@ internal class WebSecureSession(
                             BiometricManager
                                 .from(activity)
                                 .canAuthenticate(
-                                    BIOMETRIC_STRONG,
+                                    store.allowedAuthenticators(forSave = true),
                                 ) ==
                                     BiometricManager.BIOMETRIC_SUCCESS,
                         )
@@ -827,11 +834,8 @@ internal class WebSecureSession(
 
                 targetStore.prepareUnlock()
 
-            } catch (_: Exception) {
-
-                runCatching {
-                    targetStore.clear()
-                }
+            } catch (error: Exception) {
+                if (SessionFailurePolicy.invalidatedKey(error)) runCatching { targetStore.clear() }
 
                 pendingVaultEnrollment =
                     null
@@ -862,6 +866,7 @@ internal class WebSecureSession(
 
             completed =
                 true
+            deviceCredentialPrompt = false
 
             timeout?.let {
                 handler.removeCallbacks(
@@ -934,6 +939,7 @@ internal class WebSecureSession(
                             return
                         }
 
+                        if (BuildConfig.DEBUG) android.util.Log.d("GIAuthDiagnostic", "success cipher=" + (result.cryptoObject?.cipher != null))
                         try {
 
                             finish(
@@ -946,12 +952,10 @@ internal class WebSecureSession(
                                 ),
                             )
 
-                        } catch (_: Exception) {
+                        } catch (error: Exception) {
+                            if (BuildConfig.DEBUG) android.util.Log.d("GIAuthDiagnostic", "decrypt_error=" + error.javaClass.simpleName)
 
-                            runCatching {
-                                targetStore.clear()
-                            }
-
+                            if (SessionFailurePolicy.invalidatedKey(error)) runCatching { targetStore.clear() }
                             finish()
                         }
                     }
@@ -961,6 +965,7 @@ internal class WebSecureSession(
                         errString: CharSequence,
                     ) {
 
+                        if (BuildConfig.DEBUG) android.util.Log.d("GIAuthDiagnostic", "authentication_error=" + errorCode)
                         finish()
                     }
                 },
@@ -972,6 +977,7 @@ internal class WebSecureSession(
         timeout =
             Runnable {
 
+                if (BuildConfig.DEBUG) android.util.Log.d("GIAuthDiagnostic", "timeout")
                 biometric.cancelAuthentication()
 
                 finish()
@@ -986,6 +992,8 @@ internal class WebSecureSession(
 
         try {
 
+            deviceCredentialPrompt = vaultUserId == null &&
+                targetStore.allowedAuthenticators() and BiometricManager.Authenticators.DEVICE_CREDENTIAL != 0
             biometric.authenticate(
                 BiometricPrompt.PromptInfo
                     .Builder()
@@ -1002,17 +1010,17 @@ internal class WebSecureSession(
                         if (
                             vaultUserId == null
                         ) {
-                            "Confirme sua biometria para recuperar a sessão"
+                            "Confirme a biometria ou o bloqueio do celular para recuperar a sessão"
                         } else {
                             "Confirme a biometria para proteger ou abrir seu Cofre"
                         },
                     )
-                    .setAllowedAuthenticators(
-                        BIOMETRIC_STRONG,
-                    )
-                    .setNegativeButtonText(
-                        "Usar senha",
-                    )
+                    .setAllowedAuthenticators(targetStore.allowedAuthenticators())
+                    .apply {
+                        if (targetStore.allowedAuthenticators() and BiometricManager.Authenticators.DEVICE_CREDENTIAL == 0) {
+                            setNegativeButtonText("Usar senha")
+                        }
+                    }
                     .build(),
                 BiometricPrompt.CryptoObject(
                     locked.cipher,
@@ -1026,6 +1034,7 @@ internal class WebSecureSession(
     }
 
     fun cancel() {
+        deviceCredentialPrompt = false
 
         generation++
 

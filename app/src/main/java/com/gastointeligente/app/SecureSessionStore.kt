@@ -33,7 +33,15 @@ internal class SecureSessionStore(context: Context, private val vaultUserId: Str
     private val preferences = context.getSharedPreferences(
         vaultScope?.let { "secure-vault-v2-$it" } ?: "secure-session-v1", Context.MODE_PRIVATE)
     private val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-    private val alias = vaultScope?.let { "gi.vault.biometric.v2.$it" } ?: "gi.session.biometric.v1"
+    private val legacyAlias = vaultScope?.let { "gi.vault.biometric.v2.$it" } ?: "gi.session.biometric.v1"
+    private val writeAlias get() = if (vaultScope == null && Build.VERSION.SDK_INT >= 30) "gi.session.device.v2" else legacyAlias
+    // Existing biometric envelopes remain readable until the next authenticated online save.
+    private val alias get() = if (vaultScope == null && preferences.getString("key_alias", null) == "gi.session.device.v2") "gi.session.device.v2" else legacyAlias
+    fun allowedAuthenticators(forSave: Boolean = false): Int {
+        val device = vaultScope == null && Build.VERSION.SDK_INT >= 30 && (forSave || alias == "gi.session.device.v2")
+        return androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            (if (device) androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL else 0)
+    }
     private val oaep = OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA1, PSource.PSpecified.DEFAULT)
     private fun encode(bytes: ByteArray) = Base64.encodeToString(bytes, Base64.NO_WRAP)
     private fun decode(text: String) = Base64.decode(text, Base64.NO_WRAP)
@@ -56,12 +64,14 @@ internal class SecureSessionStore(context: Context, private val vaultUserId: Str
 
     fun save(data: JSONObject) {
         validatePayload(data)
+        val alias = writeAlias
         if (!keys.containsAlias(alias)) {
             val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_DECRYPT)
                 .setKeySize(2048).setDigests(KeyProperties.DIGEST_SHA256)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
                 .setUserAuthenticationRequired(true).setInvalidatedByBiometricEnrollment(true)
-            if (Build.VERSION.SDK_INT >= 30) spec.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+            if (Build.VERSION.SDK_INT >= 30) spec.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG or
+                (if (vaultScope == null) KeyProperties.AUTH_DEVICE_CREDENTIAL else 0))
             KeyPairGenerator.getInstance("RSA", "AndroidKeyStore").apply { initialize(spec.build()) }.generateKeyPair()
         }
         val publicKey = KeyFactory.getInstance("RSA").generatePublic(X509EncodedKeySpec(keys.getCertificate(alias).publicKey.encoded))
@@ -71,7 +81,9 @@ internal class SecureSessionStore(context: Context, private val vaultUserId: Str
         val wrap = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding").apply { init(Cipher.ENCRYPT_MODE, publicKey, oaep) }
         val envelope = JSONObject().put("key", encode(wrap.doFinal(aesKey.encoded)))
             .put("iv", encode(aes.iv)).put("data", encode(encrypted))
-        check(preferences.edit().putString("envelope", envelope.toString()).commit())
+        val editor = preferences.edit().putString("envelope", envelope.toString())
+        if (vaultScope == null) editor.putString("key_alias", alias)
+        check(editor.commit())
     }
 
     data class LockedSession(val cipher: Cipher, val envelope: String)
@@ -96,7 +108,9 @@ internal class SecureSessionStore(context: Context, private val vaultUserId: Str
 
     fun clear() {
         // Remove the private key first: a failed preference write must not leave usable credentials.
-        if (keys.containsAlias(alias)) keys.deleteEntry(alias)
+        for (keyAlias in setOf(alias, legacyAlias, writeAlias)) {
+            if (keys.containsAlias(keyAlias)) keys.deleteEntry(keyAlias)
+        }
         check(preferences.edit().clear().commit())
     }
 }

@@ -95,22 +95,36 @@ class MobileNavigationTest {
     @Test fun onePhysicalTapPerTabAndRapidAlternation() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             loadFixture(scenario); settled(scenario); screenshot("fixture-dashboard-dark.png")
-            for (path in listOf("/gastos", "/renda", "/cartoes", "/app/mais", "/app")) {
+            for (path in listOf("/gastos", "/cartoes", "/app/cofre-pessoal", "/app")) {
                 tap(scenario, ".mobile-bottom-nav a[href='$path']"); route(scenario, path)
                 assertEquals(path, eval(scenario, "document.querySelector('.mobile-bottom-nav [aria-current=page]').getAttribute('href')"))
                 if (path == "/gastos") { settled(scenario); screenshot("fixture-gastos-dark.png") }
             }
-            repeat(3) { for (path in listOf("/gastos", "/renda", "/cartoes", "/app")) {
+            repeat(3) { for (path in listOf("/gastos", "/cartoes", "/app/cofre-pessoal", "/app")) {
                 tap(scenario, ".mobile-bottom-nav a[href='$path']"); route(scenario, path)
             } }
         }
     }
+    @Test fun centralActionOpensCurrentExpenseAndIncomeDestinations() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            loadFixture(scenario)
+            for ((index, path) in listOf("/manual", "/renda/nova").withIndex()) {
+                tap(scenario, ".mobile-nav-create")
+                waitFor(scenario, "!!document.querySelector('[role=dialog][data-state=open]')")
+                tap(scenario, "[role=dialog] .grid > button:nth-child(${index + 1})")
+                route(scenario, path)
+                assertEquals("0", eval(scenario, "document.querySelectorAll('.mobile-bottom-nav [aria-current=page]').length"))
+            }
+        }
+    }
+
     @Test fun fourteenDestinationsHistoryRefreshAndTargets() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             loadFixture(scenario)
             assertEquals("true", eval(scenario, "[...document.querySelectorAll('.mobile-bottom-nav a')].every(e=>{const r=e.getBoundingClientRect();return r.width>=44&&r.height>=44})"))
             for (path in listOf("/gastos", "/renda", "/contas-a-pagar", "/contas-a-receber", "/cartoes", "/assinaturas", "/orcamento", "/guardado", "/metas", "/relatorios", "/mercado", "/bens", "/app")) {
-                tap(scenario, ".mobile-bottom-nav a[href='/app/mais']"); route(scenario, "/app/mais")
+                eval(scenario, """document.querySelector("#fixture-more").scrollIntoView({block:"center"})""");
+                tap(scenario, "#fixture-more"); route(scenario, "/app/mais")
                 eval(scenario, "document.querySelector(\"#more-links a[href='$path']\").scrollIntoView({block:'center',behavior:'instant'})")
                 tap(scenario, "#more-links a[href='$path']"); route(scenario, path)
             }
@@ -137,7 +151,7 @@ class MobileNavigationTest {
             loadFixture(scenario)
             for (path in listOf("/gastos", "/renda", "/contas-a-pagar", "/contas-a-receber")) {
                 // Each fixture destination has the same real editable search field.
-                eval(scenario, "document.querySelector(\".mobile-bottom-nav a[href='/app/mais']\").click()")
+                eval(scenario, "document.querySelector(\"#fixture-more\").click()")
                 route(scenario, "/app/mais")
                 eval(scenario, "document.querySelector(\"#more-links a[href='$path']\").click()")
                 route(scenario, path)

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.CookieManager
@@ -45,11 +46,60 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
 import org.json.JSONObject
 import java.io.File
+import kotlin.math.roundToInt
 
 class MainActivity : FragmentActivity() {
+
+    @Volatile private var safeTopCssPx = 0
+    @Volatile private var safeBottomCssPx = 0
+    @Volatile private var safeLeftCssPx = 0
+    @Volatile private var safeRightCssPx = 0
+
+    private inner class AndroidSystemUiBridge {
+        @JavascriptInterface
+        fun getInsets(): String = JSONObject()
+            .put("top", safeTopCssPx)
+            .put("bottom", safeBottomCssPx)
+            .toString()
+
+        @JavascriptInterface
+        fun setSurface(surface: String) {
+            if (surface !in setOf("dark", "light", "brand")) return
+            runOnUiThread {
+                if (isAllowedUrl(webViewRef?.url)) applySystemSurface(surface)
+            }
+        }
+    }
+
+    private fun applySystemSurface(surface: String) {
+        val light = surface == "light"
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = light
+            isAppearanceLightNavigationBars = light
+        }
+        webViewRef?.setBackgroundColor(if (light) 0xFFFAFAFB.toInt() else 0xFF101214.toInt())
+    }
+
+    private fun publishSafeInsets() {
+        val top = safeTopCssPx
+        val bottom = safeBottomCssPx
+        val left = safeLeftCssPx
+        val right = safeRightCssPx
+        webViewRef?.evaluateJavascript(
+            """(function(){var d=document.documentElement;d.style.setProperty('--android-safe-top','${top}px');d.style.setProperty('--android-safe-bottom','${bottom}px');d.style.setProperty('--android-safe-left','${left}px');d.style.setProperty('--android-safe-right','${right}px');window.dispatchEvent(new Event('android-system-insets'));})();""",
+            null,
+        )
+    }
 
     private var webViewRef: WebView? = null
     private var downloads: WebDownloads? = null
@@ -495,6 +545,7 @@ class MainActivity : FragmentActivity() {
         }
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        applySystemSurface("dark")
         awaitingFileResult = savedInstanceState?.getBoolean("awaitingFileResult") == true
         // Never restore a page from a different build endpoint (e.g. production in local debug).
         webStateToRestore = savedInstanceState?.takeIf {
@@ -518,16 +569,47 @@ class MainActivity : FragmentActivity() {
 
             BackHandler(enabled = canGoBack) {
                 failedUrl = null
-                webViewRef?.goBack()
+                webViewRef?.let { web ->
+                    // Let the visible web overlay consume Back before changing routes.
+                    web.evaluateJavascript(
+                        """(function() {
+                          if (!document.querySelector('#bank-picker-options[data-state="open"], .cartoes-form-dialog[data-state="open"], [role="menu"][data-state="open"]')) return false;
+                          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+                          return true;
+                        })();"""
+                    ) { handled ->
+                        if (handled != "true" && webViewRef === web) web.goBack()
+                    }
+                }
             }
 
-            Box(Modifier.fillMaxSize().background(Color(0xFF0B0F14)).safeDrawingPadding().imePadding()) {
+            Box(Modifier.fillMaxSize().background(Color(0xFF101214)).imePadding()) {
             if (!rendererFailed) AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
                     WebView(context).apply {
 
                         webViewRef = this
+                        setBackgroundColor(0xFF101214.toInt())
+                        ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
+                            val safe = insets.getInsets(
+                                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+                            )
+                            val density = resources.displayMetrics.density
+                            val nextTop = (safe.top / density).roundToInt()
+                            val nextBottom = (safe.bottom / density).roundToInt()
+                            val nextLeft = (safe.left / density).roundToInt()
+                            val nextRight = (safe.right / density).roundToInt()
+                            if (nextTop != safeTopCssPx || nextBottom != safeBottomCssPx || nextLeft != safeLeftCssPx || nextRight != safeRightCssPx) {
+                                safeTopCssPx = nextTop
+                                safeBottomCssPx = nextBottom
+                                safeLeftCssPx = nextLeft
+                                safeRightCssPx = nextRight
+                                post { publishSafeInsets() }
+                            }
+                            insets
+                        }
+                        post { ViewCompat.requestApplyInsets(this) }
                         downloads = WebDownloads(this, { pendingReport == null }, ::saveReport).also { it.attach() }
                         secureSession = WebSecureSession(this@MainActivity, this).also { it.attach() }
                         setDownloadListener { _, _, _, _, _ ->
@@ -553,6 +635,7 @@ class MainActivity : FragmentActivity() {
                             AndroidBiometricBridge(),
                             "AndroidBiometric"
                         )
+                        addJavascriptInterface(AndroidSystemUiBridge(), "AndroidSystemUi")
 
                         webChromeClient = object : WebChromeClient() {
 
@@ -647,6 +730,7 @@ class MainActivity : FragmentActivity() {
                             override fun onPageCommitVisible(view: WebView?, url: String?) {
                                 super.onPageCommitVisible(view, url)
                                 initialPageVisible = true
+                                if (isAllowedUrl(url)) publishSafeInsets()
                             }
 
                             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -760,7 +844,7 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onStop() {
-        secureSession?.cancel()
+        secureSession?.onHostStopped()
         super.onStop()
     }
 }

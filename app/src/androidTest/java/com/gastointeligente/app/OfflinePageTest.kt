@@ -41,8 +41,9 @@ class OfflinePageTest {
     }
     @Test fun bundledScreenSavesWithoutNetworkSurvivesReloadAndSeparatesAccounts() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue("Enroll a strong biometric and send emulator finger touch 1 during this test",
-            BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS)
+        assertTrue("Run only with -PofflineValidation=true; never replace a real session", context.packageName.endsWith(".offlinevalidation"))
+        assumeTrue("Configure Android screen lock (Android 11+) or strong biometrics",
+            BiometricManager.from(context).canAuthenticate(SecureSessionStore(context).allowedAuthenticators(forSave = true)) == BiometricManager.BIOMETRIC_SUCCESS)
         val store = SecureSessionStore(context)
         fun saveIdentity(user: String) = store.save(JSONObject().put("access_token","offline-synthetic-access")
             .put("refresh_token","offline-synthetic-refresh").put("userId",user).put("email","$user@example.invalid"))
@@ -55,23 +56,30 @@ class OfflinePageTest {
                 web = requireNotNull(findWeb(activity.findViewById(android.R.id.content)))
                 // Block all network access for this WebView; intercepted assets must still work.
                 web.settings.blockNetworkLoads = true
-                web.loadUrl(OfflinePage.URL)
+                web.setNetworkAvailable(false)
+                // offlineValidation already starts at OfflinePage.URL. A second
+                // load here races the initial document and can discard the
+                // event observer or cancel the prompt after the test clicks it.
             }
             try {
                 fun unlock() {
+                    waitFor(scenario, web, "location.href", "\"${OfflinePage.URL}\"")
                     waitFor(scenario, web, "typeof AndroidSecureSession", "\"object\"")
                     waitFor(scenario, web, "document.readyState === 'complete' && typeof document.getElementById('unlock')?.onclick === 'function'", "true")
-                    evaluate(scenario, web, "window.fixtureLeak = false; window.addEventListener('AndroidSecureSessionResult', e => {window.fixtureLeak = !!e.detail.access_token || !!e.detail.refresh_token;}, {once:true}); document.getElementById('unlock').click();")
+                    evaluate(scenario, web, "window.fixtureLeak = false; window.addEventListener('AndroidSecureSessionResult', e => {window.fixtureLeak = Boolean(e.detail.access_token || e.detail.refresh_token);}, {once:true}); document.getElementById('unlock').click();")
                     waitFor(scenario, web, "document.getElementById('content')?.hidden", "false")
-                    assertEquals("false", evaluate(scenario,web,"window.fixtureLeak"))
+                    assertEquals("No tokens exposed to offline document", "false", evaluate(scenario,web,"window.fixtureLeak"))
                 }
                 unlock()
+                if (InstrumentationRegistry.getArguments().getString("offlineSingleUnlock") == "true") return@use
                 evaluate(scenario,web,"document.getElementById('description').value='Almoço offline'; document.getElementById('amount').value='12,50'; document.getElementById('expense').requestSubmit(); document.getElementById('expense').requestSubmit();")
                 waitFor(scenario,web,"document.querySelectorAll('#pending li').length","1")
+                evaluate(scenario,web,"document.getElementById('kind').value='income'; document.getElementById('kind').dispatchEvent(new Event('change')); document.getElementById('description').value='Receita offline sintetica'; document.getElementById('amount').value='2300,00'; document.getElementById('date').value='2026-08-05'; document.getElementById('expense').requestSubmit();")
+                waitFor(scenario,web,"document.querySelectorAll('#pending li').length","2")
                 scenario.onActivity { web.reload() }
                 waitFor(scenario,web,"document.getElementById('content')?.hidden","true")
                 unlock()
-                waitFor(scenario,web,"document.querySelectorAll('#pending li').length","1")
+                waitFor(scenario,web,"document.querySelectorAll('#pending li').length","2")
                 assertEquals("true",evaluate(scenario,web,"document.getElementById('pending').textContent.includes('Almoço offline')"))
                 saveIdentity("other-$accountA")
                 scenario.onActivity { web.reload() }
