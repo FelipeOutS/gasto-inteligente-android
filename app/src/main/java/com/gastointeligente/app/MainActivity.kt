@@ -48,6 +48,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import org.json.JSONObject
 import java.io.File
@@ -59,8 +60,34 @@ class MainActivity : FragmentActivity() {
     @Volatile private var safeBottomCssPx = 0
     @Volatile private var safeLeftCssPx = 0
     @Volatile private var safeRightCssPx = 0
+    private val navigationPreferences by lazy { getSharedPreferences("system-navigation", MODE_PRIVATE) }
+
+    private fun applyNavigationPreference() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (navigationPreferences.getBoolean("hidden", false)) hide(WindowInsetsCompat.Type.navigationBars())
+            else show(WindowInsetsCompat.Type.navigationBars())
+        }
+        webViewRef?.let { ViewCompat.requestApplyInsets(it) }
+    }
 
     private inner class AndroidSystemUiBridge {
+        @JavascriptInterface
+        fun getNavigationHidden(): Boolean = navigationPreferences.getBoolean("hidden", false)
+
+        @JavascriptInterface
+        fun setNavigationHidden(hidden: Boolean) {
+            runOnUiThread {
+                if (!isAllowedUrl(webViewRef?.url)) return@runOnUiThread
+                val saved = navigationPreferences.edit().putBoolean("hidden", hidden).commit()
+                if (saved) applyNavigationPreference()
+                webViewRef?.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('android-navigation-preference',{detail:{saved:$saved,hidden:${navigationPreferences.getBoolean("hidden", false)}}}));",
+                    null,
+                )
+            }
+        }
+
         @JavascriptInterface
         fun getInsets(): String = JSONObject()
             .put("top", safeTopCssPx)
@@ -592,7 +619,9 @@ class MainActivity : FragmentActivity() {
                         webViewRef = this
                         setBackgroundColor(0xFF101214.toInt())
                         ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
-                            val safe = insets.getInsets(
+                            // Reserve the system area even during transient reveal: buttons must
+                            // never cover the app's bottom navigation or change its position.
+                            val safe = insets.getInsetsIgnoringVisibility(
                                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
                             )
                             val density = resources.displayMetrics.density
@@ -804,6 +833,12 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         webViewRef?.onResume()
+        applyNavigationPreference()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyNavigationPreference()
     }
 
     override fun onRequestPermissionsResult(
